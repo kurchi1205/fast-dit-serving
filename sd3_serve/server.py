@@ -7,6 +7,7 @@ import torch
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from request_management.request_handler import RequestHandler
+from request_management.router import Router
 from request_management.config_loader import ConfigLoader
 from inference.pipeline import SD3Inferencer
 from utils.logger import get_logger
@@ -23,6 +24,8 @@ config = config_loader.config
 # Initialize the RequestHandler
 SHARDS = []
 LOOPS_STARTED = False
+router = None
+ROUTER_STARTED = False
 
 # Set environment variable for GPU profiling
 os.environ["PROFILE_GPU"] = str(config["system"].get("profile_gpu", False)).lower()
@@ -63,7 +66,12 @@ async def start_background_process(background_tasks: BackgroundTasks):
         started += 1
 
     LOOPS_STARTED = True
-    return {"message": f"Background processing started on {started} GPUs."}
+    if router is not None and not ROUTER_STARTED:
+        background_tasks.add_task(router.assign_requests_to_shards)  # the router's forever loop
+        logger.info("Router loop scheduled.")
+        ROUTER_STARTED = True
+
+    return {"message": f"Background processing started on {started} GPUs + router."}
 
 
 @app.post("/change_caching_interval")
@@ -84,7 +92,7 @@ async def add_request(request: RequestInput):
     Add a new request to the system.
     """
     try:
-        await handler.add_request(request.prompt, request.timesteps_left)
+        await router.add_request(request.prompt, request.timesteps_left)
         logger.info(f"New request added: Timesteps={request.timesteps_left}")
         return {"message": "Request added successfully."}
     except Exception as e:
@@ -188,6 +196,7 @@ async def startup_event():
         raise RuntimeError("Failed to initialize background processing.")
     
     SHARDS = tmp_shards
+    router = Router(shards=SHARDS)
 
 
 if __name__ == "__main__":
