@@ -24,13 +24,13 @@ PROFILE_GPU = os.getenv("PROFILE_GPU", "false").lower() == "true"
 logger = get_logger(__name__)
 
 class RequestPool:
-    def __init__(self, inference_handler):
+    def __init__(self, inference_handler, shared_output_pool):
         self.raw_requests = {}
         self.requests = {}
         self.active_queue = asyncio.Queue()
         self.attn_queue = asyncio.Queue()
         self.decode_queue = asyncio.Queue()
-        self.output_pool = asyncio.Queue()
+        self.output_pool = shared_output_pool
         self.lock = asyncio.Lock()
         seed = torch.randint(0, 100000, (1,)).item()
         self.empty_latent = inference_handler.get_empty_latent(1, 1024, 1024, seed, device=inference_handler.device)
@@ -98,11 +98,11 @@ class RequestPool:
 
 
 class RequestHandler:
-    def __init__(self, config=None, inference_handler=None):
+    def __init__(self, config=None, inference_handler=None, output_pool=None):
         if config is None:
             config = {}
         sys_config = config["system"]
-        self.request_pool = RequestPool(inference_handler)
+        self.request_pool = RequestPool(inference_handler, shared_output_pool=output_pool)
         self.scheduler = Scheduler(batch_size=sys_config.get("batch_size", 1))
         self.cache_interval = sys_config.get("cache_interval", 5)
         self.max_requests = max(sys_config.get("batch_size", 1) * self.cache_interval + 1, 1)

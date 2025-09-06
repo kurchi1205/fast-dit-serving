@@ -26,6 +26,8 @@ SHARDS = []
 LOOPS_STARTED = False
 router = None
 ROUTER_STARTED = False
+GLOBAL_OUTPUT_POOL = asyncio.Queue()
+
 
 # Set environment variable for GPU profiling
 os.environ["PROFILE_GPU"] = str(config["system"].get("profile_gpu", False)).lower()
@@ -122,8 +124,8 @@ async def get_output():
     """
     try:
         completed_requests = []
-        while not handler.request_pool.output_pool.empty():
-            request = await handler.request_pool.output_pool.get()
+        while not GLOBAL_OUTPUT_POOL.empty():
+            request = await GLOBAL_OUTPUT_POOL.get()
             time_completed = datetime.now().isoformat()
             request["time_completed"] = datetime.fromisoformat(time_completed) - datetime.fromisoformat(request["timestamp"])
             image_data = request.get("image", None)
@@ -184,7 +186,7 @@ async def startup_event():
             device = f"cuda:{i}"
             logger.info("Loading model during startup... in device: " + device)
             inference_handler = _load_inferencer_on_device(config["model"]["model_path"], config["model"]["model_folder"], device=device)
-            handler = RequestHandler(config, inference_handler)
+            handler = RequestHandler(config, inference_handler, output_pool=GLOBAL_OUTPUT_POOL)
             tmp_shards.append({
                 "idx": i,
                 "device": device,
