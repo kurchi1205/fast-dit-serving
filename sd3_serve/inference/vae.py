@@ -370,20 +370,20 @@ class SDVAE(torch.nn.Module):
 
 
 class VAE:
-    def __init__(self, model, dtype: torch.dtype = torch.float16):
+    def __init__(self, model, dtype: torch.dtype = torch.float16, device="cuda"):
         if model.endswith(".safetensors"):
             # Load using safetensors
-            with safe_open(model, framework="pt", device="cpu") as f:
-                self.model = SDVAE(device="cpu", dtype=dtype).eval().cpu()
+            with safe_open(model, framework="pt", device=device) as f:
+                self.model = SDVAE(device=device, dtype=dtype).eval().cpu()
                 prefix = ""
                 if any(k.startswith("first_stage_model.") for k in f.keys()):
                     prefix = "first_stage_model."
-                load_into(f, self.model, prefix, "cpu", dtype)
+                load_into(f, self.model, prefix, device, dtype)
 
         elif model.endswith(".pt") or model.endswith(".pth"):
             # Load using PyTorch
-            self.model = SDVAE(device="cpu", dtype=dtype).eval().cpu()
-            state_dict = torch.load(model, map_location="cpu")
+            self.model = SDVAE(device=device, dtype=dtype).eval().cpu()
+            state_dict = torch.load(model, map_location=device)
             
             # Optional: remove "first_stage_model." prefix if present
             if any(k.startswith("first_stage_model.") for k in state_dict.keys()):

@@ -210,14 +210,14 @@ class ClipG:
 
 
 class ClipL:
-    def __init__(self, model_folder: str):
+    def __init__(self, model_folder: str, device: str = "cpu"):
         with safe_open(
-            f"{model_folder}/clip_l.safetensors", framework="pt", device="cpu"
+            f"{model_folder}/clip_l.safetensors", framework="pt", device=device
         ) as f:
             self.model = SDClipModel(
                 layer="hidden",
                 layer_idx=-2,
-                device="cuda",
+                device=device,
                 dtype=torch.float32,
                 layer_norm_hidden_state=False,
                 return_projected_pooled=False,

@@ -33,7 +33,7 @@ class RequestPool:
         self.output_pool = asyncio.Queue()
         self.lock = asyncio.Lock()
         seed = torch.randint(0, 100000, (1,)).item()
-        self.empty_latent = inference_handler.get_empty_latent(1, 1024, 1024, seed, device="cuda")
+        self.empty_latent = inference_handler.get_empty_latent(1, 1024, 1024, seed, device=inference_handler.device)
         self.neg_cond = inference_handler.fix_cond(inference_handler.get_cond(""))
         logger.info("Initialized RequestPool.")
 

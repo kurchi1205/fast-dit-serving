@@ -29,6 +29,7 @@ class SD3Inferencer:
         controlnet_ckpt=None,
         model_folder: str = "models",
         text_encoder_device: str = "cpu",
+        device: str = "cuda",
         verbose=False,
         load_tokenizers: bool = True,
         custom_scheduler = True
@@ -43,15 +44,16 @@ class SD3Inferencer:
             print("Loading Google T5-v1-XXL...")
             self.t5xxl = T5XXL(model_folder, text_encoder_device, torch.float32)
             print("Loading OpenAI CLIP L...")
-            self.clip_l = ClipL(model_folder)
+            self.clip_l = ClipL(model_folder, device=text_encoder_device)
             print("Loading OpenCLIP bigG...")
             self.clip_g = ClipG(model_folder, text_encoder_device)
         print(f"Loading SD3 model {os.path.basename(model)}...")
-        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, "cuda", custom_scheduler)
+        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, device, custom_scheduler)
         print("Loading VAE model...")
         self.vae = VAE(vae or model)
         print("Models loaded.")
         self.custom_scheduler = custom_scheduler
+        self.device = device
 
     def get_empty_latent(self, batch_size, width, height, seed, device="cuda"):
         self.print("Prep an empty latent...")
@@ -104,7 +106,7 @@ class SD3Inferencer:
         return math.isclose(max_sigma, sigma, rel_tol=1e-05) or sigma > max_sigma
 
     def fix_cond(self, cond):
-        cond, pooled = (cond[0].half().cuda(), cond[1].half().cuda())
+        cond, pooled = (cond[0].half().to(device=self.device), cond[1].half().to(device=self.device))
         return {"c_crossattn": cond, "y": pooled}
 
 
@@ -112,7 +114,7 @@ class SD3Inferencer:
         controlnet_cond = None
         if seed is None:
             seed = 50
-        latent = empty_latent.cuda()
+        latent = empty_latent.to(device=self.device)
         seed_num = None
         if seed_type == "roll":
             seed_num = seed if seed_num is None else seed_num + 1
@@ -132,10 +134,10 @@ class SD3Inferencer:
             elapsed_time_ms = start_event.elapsed_time(end_event)
         else:
             conditioning = self.get_cond(prompt)
-        latent = latent.half().cuda()
-        self.sd3.model = self.sd3.model.cuda()
-        noise = self.get_noise(seed_num, latent).cuda()
-        sigmas = self.get_sigmas(self.sd3.model.model_sampling, steps).cuda()
+        latent = latent.half().to(device=self.device)
+        self.sd3.model = self.sd3.model.to(device=self.device)
+        noise = self.get_noise(seed_num, latent).to(device=self.device)
+        sigmas = self.get_sigmas(self.sd3.model.model_sampling, steps).to(device=self.device)
         conditioning = self.fix_cond(conditioning)
         noise_scaled = self.sd3.model.model_sampling.noise_scaling(
             sigmas[0], noise, latent, self.max_denoise(sigmas)
@@ -229,17 +231,17 @@ class SD3Inferencer:
         image_np = np.array(image).astype(np.float32) / 255.0
         image_np = np.moveaxis(image_np, 2, 0)
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
-        image_torch = torch.from_numpy(batch_images).cuda()
+        image_torch = torch.from_numpy(batch_images).to(device=self.device)
         if using_2b_controlnet:
             image_torch = image_torch * 2.0 - 1.0
         elif controlnet_type == 1:  # canny
             image_torch = image_torch * 255 * 0.5 + 0.5
         else:
             image_torch = 2.0 * image_torch - 1.0
-        image_torch = image_torch.cuda()
-        self.vae.model = self.vae.model.cuda()
-        latent = self.vae.model.encode(image_torch).cpu()
-        self.vae.model = self.vae.model.cpu()
+        image_torch = image_torch.to(device=self.device)
+        self.vae.model = self.vae.model.to(device=self.device)
+        latent = self.vae.model.encode(image_torch).to(device=self.device)
+        self.vae.model = self.vae.model.to(device=self.device)
         self.print("Encoded")
         return latent
 
@@ -250,11 +252,10 @@ class SD3Inferencer:
 
     def vae_decode(self, latent) -> Image.Image:
         self.print("Decoding latent to image...")
-        latent = latent.cuda()
-        self.vae.model = self.vae.model.cuda()
+        latent = latent.to(device=self.device)
+        self.vae.model = self.vae.model.to(device=self.device)
         image = self.vae.model.decode(latent)
         image = image.float()
-        self.vae.model = self.vae.model.cpu()
         image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)[0]
         decoded_np = 255.0 * np.moveaxis(image.detach().cpu().numpy(), 0, 2)
         decoded_np = decoded_np.astype(np.uint8)

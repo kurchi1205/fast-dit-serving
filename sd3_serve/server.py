@@ -3,6 +3,7 @@ import asyncio
 import os
 from datetime import datetime
 import uvicorn
+import torch
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from request_management.request_handler import RequestHandler
@@ -20,8 +21,7 @@ config_loader = ConfigLoader()
 config = config_loader.config
 
 # Initialize the RequestHandler
-handler = None
-inference_handler = None
+SHARDS = []
 
 # Set environment variable for GPU profiling
 os.environ["PROFILE_GPU"] = str(config["system"].get("profile_gpu", False)).lower()
@@ -122,32 +122,49 @@ async def get_output():
         raise HTTPException(status_code=500, detail="Failed to retrieve completed requests.")
 
 
+def _load_inferencer_on_device(model_path, model_folder, device):
+    inf = SD3Inferencer()
+    # Make sure your loader moves modules to `device`
+    inf.load(
+        model=model_path,
+        model_folder=model_folder,
+        text_encoder_device=device,  # adjust if you want encoders elsewhere
+        device=device,
+        verbose=False,
+        shift=5,
+        custom_scheduler=True,
+    )
+    return inf
+
+
 # Define a startup event to load the model and start the background task
 @app.on_event("startup")
 async def startup_event():
     """
     Load the model and start the background task to monitor and process requests.
     """
-    global inference_handler
-    global handler
+    global SHARDS
+
+    n = torch.cuda.device_count()
+    tmp_shards = []
+
     try:
-        logger.info("Loading model during startup...")
-        inference_handler = SD3Inferencer()
-        model_path = config["model"]["model_path"]
-        model_folder = config["model"]["model_folder"]
-        inference_handler.load(
-            model=model_path,
-            model_folder=model_folder,
-            text_encoder_device="cuda",
-            verbose=False,
-            shift=5,
-            custom_scheduler=True
-        )
-        handler = RequestHandler(config, inference_handler)
-        logger.info("Background request processing started during server startup.")
+        for i in range(n):
+            device = f"cuda:{i}"
+            logger.info("Loading model during startup... in device: " + device)
+            inference_handler = _load_inferencer_on_device(config["model"]["model_path"], config["model"]["model_folder"], device=device)
+            handler = RequestHandler(config, inference_handler)
+            tmp_shards.append({
+                "idx": i,
+                "device": device,
+                "handler": handler,
+                "inference_handler": inference_handler
+            })
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         raise RuntimeError("Failed to initialize background processing.")
+    
+    SHARDS = tmp_shards
 
 
 if __name__ == "__main__":
