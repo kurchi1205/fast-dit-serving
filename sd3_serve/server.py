@@ -22,6 +22,7 @@ config = config_loader.config
 
 # Initialize the RequestHandler
 SHARDS = []
+LOOPS_STARTED = False
 
 # Set environment variable for GPU profiling
 os.environ["PROFILE_GPU"] = str(config["system"].get("profile_gpu", False)).lower()
@@ -41,6 +42,28 @@ async def start_background_process(model, background_tasks: BackgroundTasks):
     global inference_handler
     background_tasks.add_task(handler.process_request, inference_handler, save_latents=False)
     return {"message": "Background process started."}
+
+
+@app.post("/start_background_process")
+async def start_background_process(background_tasks: BackgroundTasks):
+    global LOOPS_STARTED
+    if not SHARDS:
+        raise HTTPException(status_code=500, detail="System not initialized")
+
+    if LOOPS_STARTED:
+        return {"message": "Processing already running."}
+    
+    started = 0
+    for s in SHARDS:
+        h = s["handler"]
+        inf = s["inference_handler"]
+
+        background_tasks.add_task(h.process_request, inf, save_latents=False)
+        logger.info(f"[GPU {s['idx']}] Processing loop scheduled.")
+        started += 1
+
+    LOOPS_STARTED = True
+    return {"message": f"Background processing started on {started} GPUs."}
 
 
 @app.post("/change_caching_interval")
