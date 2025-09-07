@@ -203,9 +203,9 @@ async def amain() -> None:
             print("Server connection failed. Is it running?")
             sys.exit(1)
 
-        # Start background worker
-        if not await start_background_process(session, args.server_url, args.model):
-            print("Proceeding even though background process did not confirm start...")
+        # # Start background worker
+        # if not await start_background_process(session, args.server_url, args.model):
+        #     print("Proceeding even though background process did not confirm start...")
 
         submitted = await submit_all(session, args.server_url, prompts)
         if submitted == 0:
