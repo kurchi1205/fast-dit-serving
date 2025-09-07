@@ -20,13 +20,13 @@ async def test_server(prompt, server_url="http://localhost:8000", timesteps=30):
     
     try:
         async with aiohttp.ClientSession() as session:
-            # 1. Start background process
-            print("1. Starting background process...")
-            async with session.post(f"{server_url}/start_background_process", params={"model": ""}) as resp:
-                if resp.status == 200:
-                    print("Background process started")
-                else:
-                    print(f"Background process response: {resp.status}")
+            # # 1. Start background process
+            # print("1. Starting background process...")
+            # async with session.post(f"{server_url}/start_background_process", params={"model": ""}) as resp:
+            #     if resp.status == 200:
+            #         print("Background process started")
+            #     else:
+            #         print(f"Background process response: {resp.status}")
             
             # 2. Submit request
             print("2. Submitting inference request...")

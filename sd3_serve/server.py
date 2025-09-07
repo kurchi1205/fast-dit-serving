@@ -172,8 +172,7 @@ async def startup_event():
     """
     Load the model and start the background task to monitor and process requests.
     """
-    global SHARDS
-    global router
+    global SHARDS, router, LOOPS_STARTED, ROUTER_STARTED, GLOBAL_OUTPUT_POOL
 
     n = torch.cuda.device_count()
     tmp_shards = []
@@ -196,6 +195,33 @@ async def startup_event():
     
     SHARDS = tmp_shards
     router = Router(shards=SHARDS)
+
+    if not SHARDS:
+        raise HTTPException(status_code=500, detail="System not initialized")
+
+    if LOOPS_STARTED:
+        return {"message": "Processing already running."}
+    
+    if router is not None and not ROUTER_STARTED:
+        asyncio.create_task(
+            router.assign_requests_to_shards(poll_interval=0.005),
+            name="router-loop",
+        )
+        ROUTER_STARTED = True
+        logger.info("Router loop started")
+
+    started = 0
+    for s in SHARDS:
+        h = s["handler"]
+        inf = s["inference_handler"]
+        asyncio.create_task(
+                h.process_request(inference_handler=inf, save_latents=False),
+                name=f"gpu-{s['idx']}-loop",
+            )
+        logger.info(f"[GPU {s['idx']}] Processing loop scheduled.")
+        started += 1
+    LOOPS_STARTED = True
+
 
 
 if __name__ == "__main__":
