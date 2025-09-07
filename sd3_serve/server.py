@@ -43,21 +43,19 @@ class RequestInput(BaseModel):
 
 # Define API endpoints
 @app.post("/start_background_process")
-async def start_background_process(model, background_tasks: BackgroundTasks):
-    global inference_handler
-    background_tasks.add_task(handler.process_request, inference_handler, save_latents=False)
-    return {"message": "Background process started."}
-
-
-@app.post("/start_background_process")
 async def start_background_process(background_tasks: BackgroundTasks):
-    global LOOPS_STARTED
+    global SHARDS, LOOPS_STARTED, router, ROUTER_STARTED
     if not SHARDS:
         raise HTTPException(status_code=500, detail="System not initialized")
 
     if LOOPS_STARTED:
         return {"message": "Processing already running."}
     
+    if router is not None and not ROUTER_STARTED:
+        background_tasks.add_task(router.assign_requests_to_shards)  # the router's forever loop
+        logger.info("Router loop scheduled.")
+        ROUTER_STARTED = True
+
     started = 0
     for s in SHARDS:
         h = s["handler"]
@@ -66,12 +64,9 @@ async def start_background_process(background_tasks: BackgroundTasks):
         background_tasks.add_task(h.process_request, inf, save_latents=False)
         logger.info(f"[GPU {s['idx']}] Processing loop scheduled.")
         started += 1
-
     LOOPS_STARTED = True
-    if router is not None and not ROUTER_STARTED:
-        background_tasks.add_task(router.assign_requests_to_shards)  # the router's forever loop
-        logger.info("Router loop scheduled.")
-        ROUTER_STARTED = True
+
+    
 
     return {"message": f"Background processing started on {started} GPUs + router."}
 
@@ -93,6 +88,7 @@ async def add_request(request: RequestInput):
     """
     Add a new request to the system.
     """
+    global router
     try:
         await router.add_request(request.prompt, request.timesteps_left)
         logger.info(f"New request added: Timesteps={request.timesteps_left}")
@@ -177,6 +173,7 @@ async def startup_event():
     Load the model and start the background task to monitor and process requests.
     """
     global SHARDS
+    global router
 
     n = torch.cuda.device_count()
     tmp_shards = []

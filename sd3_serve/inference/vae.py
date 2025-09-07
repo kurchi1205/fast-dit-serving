@@ -382,7 +382,7 @@ class VAE:
 
         elif model.endswith(".pt") or model.endswith(".pth"):
             # Load using PyTorch
-            self.model = SDVAE(device=device, dtype=dtype).eval().cpu()
+            self.model = SDVAE(device=device, dtype=dtype).eval()
             state_dict = torch.load(model, map_location=device)
             
             # Optional: remove "first_stage_model." prefix if present

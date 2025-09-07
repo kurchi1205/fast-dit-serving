@@ -29,6 +29,7 @@ class Router:
         assert shards, "Router needs at least one GPU shard"
         self.shards = shards
         self.intake: asyncio.Queue = asyncio.Queue()
+        self.lock = asyncio.Lock()
 
     
     def create_request(self, prompt, timesteps_left):
@@ -52,7 +53,8 @@ class Router:
     async def add_request(self, prompt, timesteps_left):
         """Add a new request to the pool."""
         request = self.create_request(prompt, timesteps_left)
-        self.intake.put(request)
+        async with self.lock:
+            await self.intake.put(request)
         logger.info(f"Request added to queue: {request['request_id']} (Prompt: {request['prompt']})")
 
     
@@ -61,13 +63,13 @@ class Router:
         Keep each shard's (final + raw) <= max_requests so its own `prefill()`
         can move items from raw -> final without overload.
         """
-        pool = shard.handler.request_pool
+        pool = shard["handler"].request_pool
         current_final = len(pool.requests)
         current_raw = len(pool.raw_requests)
-        return max(0, shard.handler.max_requests - (current_final + current_raw))
+        return max(0, shard["handler"].max_requests - (current_final + current_raw))
     
 
-    async def assign_requests_to_shards(self, poll_interval: float = 5):
+    async def assign_requests_to_shards(self, poll_interval: float = 0.01):
         """
         Drain the central intake and distribute RAW requests to shards'
         raw pools, similar in spirit to your `prefill` logic.
@@ -88,7 +90,7 @@ class Router:
 
                 while slots > 0 and not self.intake.empty():
                     req = await self.intake.get()
-                    shard.handler.request_pool.add_request_to_pool(req)
+                    shard["handler"].request_pool.add_request_to_pool(req)
                     slots -= 1
                     made_progress = True
 
