@@ -1,41 +1,138 @@
 import torch
+import torch.nn as nn
+
+# def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
+#     """Just a debugging-friendly hack to apply the weights in a safetensors file to the pytorch module."""
+#     for key in ckpt.keys():
+#         model_key = key
+#         if remap is not None and key in remap:
+#             model_key = remap[key]
+#         if model_key.startswith(prefix) and not model_key.startswith("loss."):
+#             path = model_key[len(prefix) :].split(".")
+#             obj = model
+#             for p in path:
+#                 if obj is list:
+#                     obj = obj[int(p)]
+#                 else:
+#                     obj = getattr(obj, p, None)
+#                     if obj is None:
+#                         print(
+#                             f"Skipping key '{model_key}' in safetensors file as '{p}' does not exist in python model"
+#                         )
+#                         break
+#             if obj is None:
+#                 continue
+#             try:
+#                 tensor = ckpt.get_tensor(key).to(device=device)
+#                 if dtype is not None and tensor.dtype != torch.int32:
+#                     tensor = tensor.to(dtype=dtype)
+#                 obj.requires_grad_(False)
+#                 # print(f"K: {model_key}, O: {obj.shape} T: {tensor.shape}")
+#                 if obj.shape != tensor.shape:
+#                     print(
+#                         f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}"
+#                     )
+#                 obj.set_(tensor)
+#             except Exception as e:
+#                 print(f"Failed to load key '{key}' in safetensors file: {e}")
+#                 raise e
+
 
 def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
-    """Just a debugging-friendly hack to apply the weights in a safetensors file to the pytorch module."""
-    for key in ckpt.keys():
-        model_key = key
-        if remap is not None and key in remap:
-            model_key = remap[key]
-        if model_key.startswith(prefix) and not model_key.startswith("loss."):
-            path = model_key[len(prefix) :].split(".")
-            obj = model
-            for p in path:
-                if obj is list:
-                    obj = obj[int(p)]
-                else:
-                    obj = getattr(obj, p, None)
-                    if obj is None:
-                        print(
-                            f"Skipping key '{model_key}' in safetensors file as '{p}' does not exist in python model"
-                        )
-                        break
-            if obj is None:
-                continue
-            try:
-                tensor = ckpt.get_tensor(key).to(device=device)
-                if dtype is not None and tensor.dtype != torch.int32:
-                    tensor = tensor.to(dtype=dtype)
-                obj.requires_grad_(False)
-                # print(f"K: {model_key}, O: {obj.shape} T: {tensor.shape}")
-                if obj.shape != tensor.shape:
-                    print(
-                        f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}"
-                    )
-                obj.set_(tensor)
-            except Exception as e:
-                print(f"Failed to load key '{key}' in safetensors file: {e}")
-                raise e
+    """
+    Apply weights from a safetensors handle into a PyTorch module safely.
 
+    Changes vs original:
+      - Traversal supports lists/tuples/ModuleList/Sequential with numeric indices.
+      - Moves each tensor to the *target param's device* (falls back to `device` arg).
+      - Uses .copy_/.data.copy_ under no_grad (no cross-device set_).
+      - Casts only floating dtypes when dtype is provided.
+      - Skips missing paths and shape-mismatch safely.
+    """
+    SEQ_TYPES = (list, tuple, nn.ModuleList, nn.Sequential)
+    norm_prefix = prefix if not prefix or prefix.endswith(".") else prefix + "."
+    loaded = mismatched = skipped = 0
+
+    @torch.no_grad()
+    def _copy_into(obj, t, name):
+        nonlocal loaded, mismatched, skipped
+        # determine target device (prefer the param's device)
+        target_dev = getattr(obj, "device", None)
+        if target_dev is None:
+            target_dev = torch.device(device)
+        t = t.to(target_dev)
+
+        # optional dtype cast (floats only)
+        if dtype is not None and t.dtype.is_floating_point:
+            t = t.to(dtype)
+
+        # shape check
+        try:
+            obj_shape = obj.shape
+        except AttributeError:
+            print(f"Skipping key '{name}' (target is not a Tensor/Parameter).")
+            skipped += 1
+            return
+
+        if obj_shape != t.shape:
+            print(f"W: shape mismatch for key {name}, {obj_shape} != {t.shape}")
+            mismatched += 1
+            return
+
+        # copy (no storage swap)
+        if isinstance(obj, nn.Parameter):
+            obj.requires_grad_(False)
+            obj.data.copy_(t)
+            loaded += 1
+        elif isinstance(obj, torch.Tensor):
+            obj.copy_(t)
+            loaded += 1
+        else:
+            print(f"Skipping key '{name}' (target not a Tensor/Parameter).")
+            skipped += 1
+
+    for key in ckpt.keys():
+        model_key = remap.get(key, key) if remap and key in remap else key
+        if norm_prefix and not model_key.startswith(norm_prefix):
+            continue
+        if model_key.startswith("loss."):
+            continue
+
+        subkey = model_key[len(norm_prefix):] if norm_prefix else model_key
+        if not subkey:
+            continue
+
+        # traverse the path safely
+        path_elems = subkey.split(".")
+        obj = model
+        valid = True
+        for p in path_elems:
+            if p.isdigit() and isinstance(obj, SEQ_TYPES):
+                idx = int(p)
+                try:
+                    obj = obj[idx]
+                except Exception:
+                    valid = False
+                    break
+            else:
+                obj = getattr(obj, p, None)
+                if obj is None:
+                    valid = False
+                    break
+
+        if not valid or obj is None:
+            print(f"Skipping key '{model_key}' in safetensors file: path '{subkey}' not found in model")
+            skipped += 1
+            continue
+
+        try:
+            t = ckpt.get_tensor(key)  # typically CPU tensor
+            _copy_into(obj, t, model_key)
+        except Exception as e:
+            print(f"Failed to load key '{key}' in safetensors file: {e}")
+            raise
+
+    print(f"load_into summary: loaded={loaded}, mismatched={mismatched}, skipped={skipped}")
 
 def escape_important(text):
     text = text.replace("\\)", "\0\1")
