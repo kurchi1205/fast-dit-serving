@@ -2,8 +2,9 @@ import json
 import matplotlib.pyplot as plt
 from datetime import datetime
 import collections
+import argparse
 
-def plot_gpu_memory(log_file, save_path=None, show=True):
+def plot_gpu_memory(log_file, save_path=None):
     """
     Plot GPU memory usage (in GB) vs elapsed time (seconds).
 
@@ -56,12 +57,11 @@ def plot_gpu_memory(log_file, save_path=None, show=True):
         plt.savefig(save_path, dpi=200)
         print(f"Plot saved to: {save_path}")
 
-    if show:
-        plt.show()
-    else:
-        plt.close()
-
 
 # Example usage:
 if __name__ == "__main__":
-    plot_gpu_memory("outputs/gpu_burst_utilization_log.json", save_path="outputs/gpu_memory_plot.png")
+    parser = argparse.ArgumentParser(description="Plot GPU memory usage vs time.")
+    parser.add_argument("--log_file", required=True, help="Path to the GPU utilization JSON log.")
+    parser.add_argument("--output", default=None, help="Optional path to save the output plot (e.g., gpu_memory.png).")
+    args = parser.parse_args()
+    plot_gpu_memory(args.log_file, save_path=args.output)
