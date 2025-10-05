@@ -7,21 +7,18 @@ import pynvml
 import time
 import json
 from datetime import datetime
+import argparse
 
 pynvml.nvmlInit()
 n_gpus = pynvml.nvmlDeviceGetCount()
 
-LOG_FILE = "outputs/gpu_burst_utilization_log.json"
-DUMP_INTERVAL = 5     # seconds between dumps
-SAMPLE_INTERVAL = 1   # seconds between samples
 
-
-def log_gpu_utilization():
+def log_gpu_utilization(log_file, dump_interval, sample_interval):
     all_records = []
     try:
         while True:
             batch = []
-            for _ in range(DUMP_INTERVAL):  # collect multiple samples before writing
+            for _ in range(dump_interval):  # collect multiple samples before writing
                 timestamp = datetime.now().isoformat()
                 snapshot = {"timestamp": timestamp, "gpus": []}
                 for i in range(n_gpus):
@@ -35,41 +32,37 @@ def log_gpu_utilization():
                         "memory_total_MB": round(mem.total / 1024**2, 2)
                     })
                 batch.append(snapshot)
-                time.sleep(SAMPLE_INTERVAL)
+                time.sleep(sample_interval)
 
             # append batch to file periodically
-            with open(LOG_FILE, "a") as f:
+            with open(log_file, "a") as f:
                 for record in batch:
                     f.write(json.dumps(record) + "\n")
 
-            print(f"[{datetime.now().isoformat()}] Dumped {len(batch)} samples to {LOG_FILE}")
+            print(f"[{datetime.now().isoformat()}] Dumped {len(batch)} samples to {log_file}")
 
     except KeyboardInterrupt:
         print("Stopped GPU monitoring.")
 
-# pynvml.nvmlInit()
-# n_gpus = pynvml.nvmlDeviceGetCount()
-
-# def log_gpu_utilization():
-#     with open("gpu_utilization_log.csv", "w", newline="") as f:
-#         writer = csv.writer(f)
-#         writer.writerow(["timestamp", "gpu", "utilization_percent", "memory_used_MB", "memory_total_MB"])
-
-#         try:
-#             while True:
-#                 timestamp = datetime.now().isoformat()
-#                 for i in range(n_gpus):
-#                     handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-#                     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-#                     mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-#                     writer.writerow([timestamp, i, util.gpu, mem.used / 1024**2, mem.total / 1024**2])
-#                 f.flush()
-#                 time.sleep(1)   # sample every second
-#         except KeyboardInterrupt:
-#             print("Stopped logging.")
-
 
 if __name__ == "__main__":
-    log_gpu_utilization()
+    parser = argparse.ArgumentParser(description="Plot GPU memory usage vs time.")
+    parser.add_argument("--log_file", required=True, help="Path to the GPU utilization JSON log.")
+    parser.add_argument(
+        "--dump_interval",
+        type=int,
+        default=5,
+        help="Number of seconds between writing batches of GPU samples to the log file (default: 5)."
+    )
+
+    parser.add_argument(
+        "--sample_interval",
+        type=int,
+        default=1,
+        help="Sampling interval in seconds between GPU utilization checks (default: 1)."
+    )
+
+    args = parser.parse_args()
+    log_gpu_utilization(args.log_file, args.dump_interval, args.sample_interval)
 
 
