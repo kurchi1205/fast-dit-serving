@@ -3,6 +3,7 @@ import os
 import asyncio
 import uuid
 import torch
+import gc
 from datetime import datetime, timedelta
 
 try:
@@ -247,14 +248,16 @@ class RequestHandler:
 
         # Run decoding in a separate thread (prevents blocking)
         latent = SD3LatentFormat().process_out(request["noise_scaled"])
-        image = inference_handler.vae_decode(latent)
+        image = inference_handler.vae_decode(latent.to(dtype=torch.float16))
         request["image"] = image  # Store decoded image
 
         # Clean up memory
+        del latent
         for key in ["noise_scaled", "sigmas", "conditioning", "neg_cond", "old_denoised", "context_latent", "x_latent"]:
             if key in request:
                 del request[key]
-
+        gc.collect()
+        torch.cuda.empty_cache()
         # Move request to output pool
         await self.request_pool.add_to_output_pool(request)
 
@@ -278,21 +281,21 @@ class RequestHandler:
                 compute_attention=True,
                 save_latents=save_latents
             )
-            self.request_pool.requests[request_id] = proc_request
-            
             # Update request state
             proc_request["cache_interval"] = self.cache_interval
             proc_request["timesteps_left"] -= 1
             proc_request["current_timestep"] += 1
+            self.update_status(proc_request)
+            self.request_pool.requests[request_id] = proc_request
+            
             
             # Handle completion
             # if request["timesteps_left"] == 0:
             #     await self.request_pool.decode_queue.put(request_id)
-            
-            self.update_status(proc_request)
-            processed_requests.append(proc_request)
+            del proc_request
+            # processed_requests.append(proc_request)
         
-        return processed_requests
+        return
 
     async def _process_active_batch(self, inference_handler, request_ids, save_latents):
         """Process a batch of non-attention requests asynchronously."""
@@ -324,7 +327,8 @@ class RequestHandler:
             self.update_status(request)
             self.request_pool.requests[request_id] = request
         
-        return processed_requests
+        del processed_requests
+        return
 
     # def process_batch(self, inference_handler, request_ids, requires_attention):
     #     # if requires_attention:

@@ -119,6 +119,24 @@ async def simulate_load(prompts, host, num_requests=10, delay_between=0.5):
     await asyncio.gather(*tasks)
 
 
+async def simulate_burst_load(prompts, host, burst_size=20, burst_interval=5, total_duration=60):
+    """
+    Send bursts of requests: 'burst_size' back-to-back, then sleep 'burst_interval' seconds.
+    """
+    end_time = asyncio.get_event_loop().time() + total_duration
+    burst_count = 0
+    while asyncio.get_event_loop().time() < end_time:
+        burst_count += 1
+        print(f"Starting burst #{burst_count} ({burst_size} requests)")
+        tasks = []
+        for _ in range(burst_size):
+            prompt_key, prompt_text = random.choice(prompts)
+            tasks.append(send_request(prompt_key, prompt_text, host))
+        await asyncio.gather(*tasks)
+        print(f"Burst #{burst_count} complete. Sleeping for {burst_interval}s...\n")
+        await asyncio.sleep(burst_interval)
+
+
 async def simulate_constant_throughput(prompts, host, rate_per_sec=2, total_duration=30):
     """
     Sends requests at a constant rate (requests per second) for a total duration.
@@ -141,6 +159,8 @@ async def main():
     parser.add_argument("--rate", type=float, default=2, help="Requests per second for constant throughput.")
     parser.add_argument("--duration", type=int, default=100, help="Duration (seconds) for load simulation.")
     parser.add_argument("--mode", choices=["constant", "burst"], default="constant", help="Load simulation mode.")
+    parser.add_argument("--burst_size", type=int, default=20)
+    parser.add_argument("--burst_interval", type=float, default=5)
 
     args = parser.parse_args()
 
@@ -155,7 +175,7 @@ async def main():
     if args.mode == "constant":
         await simulate_constant_throughput(prompts, args.host, args.rate, args.duration)
     else:
-        await simulate_load(prompts, args.host, num_requests=20, delay_between=1)
+        await simulate_burst_load(prompts, args.host, args.burst_size, args.burst_interval, args.duration)
 
     # Allow time for all responses to finish
     await asyncio.sleep(1000)

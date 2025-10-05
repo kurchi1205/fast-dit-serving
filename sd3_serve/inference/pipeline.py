@@ -252,14 +252,13 @@ class SD3Inferencer:
 
     def vae_decode(self, latent) -> Image.Image:
         self.print("Decoding latent to image...")
-        latent = latent.to(device=self.device)
-        self.vae.model = self.vae.model.to(device=self.device)
         image = self.vae.model.decode(latent)
         image = image.float()
         image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)[0]
         decoded_np = 255.0 * np.moveaxis(image.detach().cpu().numpy(), 0, 2)
         decoded_np = decoded_np.astype(np.uint8)
         out_image = Image.fromarray(decoded_np)
+        del image 
         self.print("Decoded")
         return out_image
 

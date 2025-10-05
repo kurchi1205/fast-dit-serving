@@ -389,6 +389,7 @@ class VAE:
             if any(k.startswith("first_stage_model.") for k in state_dict.keys()):
                 state_dict = {k.replace("first_stage_model.", ""): v for k, v in state_dict.items()}
             self.model.load_state_dict(state_dict, strict=True)
+        self.model = self.model.to(device=device)
 
 
     def save(self, output_path: str = "ckpt/finetuned_vae.pth"):

@@ -59,7 +59,7 @@ class ModelSamplingDiscreteFlowAdaptive(nn.Module):
         if edge_too_low.any():
             noise = torch.randn_like(latent) * 0.01
             latent[edge_too_low] = latent[edge_too_low] + noise[edge_too_low]
-            
+            del noise
         
         # edge_norm = torch.clamp(edge_complexity, min=0.4) / 0.5  # Floor edge at 0.4
         edge_norm = edge_complexity/ 0.5  # Floor edge at 0.4
