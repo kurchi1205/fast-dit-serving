@@ -50,7 +50,7 @@ class SD3Inferencer:
         print(f"Loading SD3 model {os.path.basename(model)}...")
         self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, device, custom_scheduler)
         print("Loading VAE model...")
-        self.vae = VAE(vae or model)
+        self.vae = VAE(vae or model, device=device)
         print("Models loaded.")
         self.custom_scheduler = custom_scheduler
         self.device = device
