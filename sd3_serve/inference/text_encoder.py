@@ -223,7 +223,7 @@ class ClipL:
                 return_projected_pooled=False,
                 textmodel_json_config=CLIPL_CONFIG,
             )
-            load_into(f, self.model.transformer, "", "cuda", torch.float32)
+            load_into(f, self.model.transformer, "", device, torch.float32)
 
 
 class T5XXL:

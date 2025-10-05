@@ -301,13 +301,13 @@ class SD3:
                 shift=shift,
                 file=f,
                 prefix="model.diffusion_model.",
-                device="cuda",
+                device=device,
                 dtype=torch.float16,
                 control_model_ckpt=control_model_ckpt,
                 verbose=verbose,
                 custom_scheduler=custom_scheduler
             ).eval()
-            load_into(f, self.model, "model.", "cuda", torch.float16)
+            load_into(f, self.model, "model.", device, torch.float16)
         
 
 
