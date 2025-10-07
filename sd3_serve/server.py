@@ -182,45 +182,51 @@ async def startup_event():
             device = f"cuda:{i}"
             logger.info("Loading model during startup... in device: " + device)
             inference_handler = _load_inferencer_on_device(config["model"]["model_path"], config["model"]["model_folder"], device=device)
-            handler = RequestHandler(config, inference_handler, output_pool=GLOBAL_OUTPUT_POOL)
+            handler = RequestHandler(config, inference_handler, output_pool=GLOBAL_OUTPUT_POOL, router=router)
             tmp_shards.append({
                 "idx": i,
                 "device": device,
                 "handler": handler,
                 "inference_handler": inference_handler
             })
+
+        SHARDS = tmp_shards
+        router = Router(shards=SHARDS)
+        for shard in SHARDS:
+            shard["handler"].router = router
+
+        if not SHARDS:
+            raise HTTPException(status_code=500, detail="System not initialized")
+
+        if LOOPS_STARTED:
+            return {"message": "Processing already running."}
+        
+        if router is not None and not ROUTER_STARTED:
+            asyncio.create_task(
+                router.assign_requests_to_shards(poll_interval=0.00005),
+                name="router-loop",
+            )
+            ROUTER_STARTED = True
+            logger.info("Router loop started")
+
+        started = 0
+        for s in SHARDS:
+            h = s["handler"]
+            inf = s["inference_handler"]
+            asyncio.create_task(
+                    h.process_request(inference_handler=inf, save_latents=False),
+                    name=f"gpu-{s['idx']}-loop",
+                )
+            logger.info(f"[GPU {s['idx']}] Processing loop scheduled.")
+            started += 1
+        LOOPS_STARTED = True
+
+
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         raise RuntimeError("Failed to initialize background processing.")
     
-    SHARDS = tmp_shards
-    router = Router(shards=SHARDS)
-
-    if not SHARDS:
-        raise HTTPException(status_code=500, detail="System not initialized")
-
-    if LOOPS_STARTED:
-        return {"message": "Processing already running."}
     
-    if router is not None and not ROUTER_STARTED:
-        asyncio.create_task(
-            router.assign_requests_to_shards(poll_interval=0.005),
-            name="router-loop",
-        )
-        ROUTER_STARTED = True
-        logger.info("Router loop started")
-
-    started = 0
-    for s in SHARDS:
-        h = s["handler"]
-        inf = s["inference_handler"]
-        asyncio.create_task(
-                h.process_request(inference_handler=inf, save_latents=False),
-                name=f"gpu-{s['idx']}-loop",
-            )
-        logger.info(f"[GPU {s['idx']}] Processing loop scheduled.")
-        started += 1
-    LOOPS_STARTED = True
 
 
 
