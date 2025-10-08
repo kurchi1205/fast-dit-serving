@@ -99,7 +99,7 @@ class RequestPool:
 
 
 class RequestHandler:
-    def __init__(self, config=None, inference_handler=None, output_pool=None, router=None):
+    def __init__(self, config=None, inference_handler=None, output_pool=None):
         if config is None:
             config = {}
         sys_config = config["system"]
@@ -110,7 +110,6 @@ class RequestHandler:
         logger.info(f"Initialized RequestHandler with batch_size={self.scheduler.batch_size}, "
                     f"cache_interval={self.cache_interval}, max_requests={self.max_requests}")
         self.pending_timeout_check = sys_config.get("pending_timeout_check", 200)
-        self.router = router
         
     def create_request(self, prompt, timesteps_left):
         request = {
@@ -261,7 +260,6 @@ class RequestHandler:
         torch.cuda.empty_cache()
         # Move request to output pool
         await self.request_pool.add_to_output_pool(request)
-        self.router.update_capacity(self.gpu_idx, +1)
 
 
 

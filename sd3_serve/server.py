@@ -182,7 +182,7 @@ async def startup_event():
             device = f"cuda:{i}"
             logger.info("Loading model during startup... in device: " + device)
             inference_handler = _load_inferencer_on_device(config["model"]["model_path"], config["model"]["model_folder"], device=device)
-            handler = RequestHandler(config, inference_handler, output_pool=GLOBAL_OUTPUT_POOL, router=router)
+            handler = RequestHandler(config, inference_handler, output_pool=GLOBAL_OUTPUT_POOL)
             tmp_shards.append({
                 "idx": i,
                 "device": device,
@@ -192,8 +192,6 @@ async def startup_event():
 
         SHARDS = tmp_shards
         router = Router(shards=SHARDS)
-        for shard in SHARDS:
-            shard["handler"].router = router
 
         if not SHARDS:
             raise HTTPException(status_code=500, detail="System not initialized")
