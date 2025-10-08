@@ -102,12 +102,6 @@ class Router:
                         req = await self.intake.get()
                         shard["handler"].request_pool.add_request_to_pool(req)
 
-                        if self.logger:
-                            self.logger.info(
-                                f"Assigned request {req['request_id']} → GPU-{gpu_idx} "
-                                f"(remaining slots={self._assignable_slots(shard)-1})"
-                            )
-
                         made_progress = True
                         assigned = True
                         break
