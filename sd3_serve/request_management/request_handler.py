@@ -4,6 +4,7 @@ import asyncio
 import uuid
 import torch
 import gc
+import time
 from datetime import datetime, timedelta
 
 try:
@@ -200,19 +201,28 @@ class RequestHandler:
             
             
             # Create two parallel tasks - one for attention requests, one for active requests
-            tasks = []
+            attn_tasks = []
+            active_tasks = []
             
             if attn_requests:
                 # Process all attention requests in one task
-                tasks.append(self._process_attention_batch(inference_handler, attn_requests, save_latents))
+                attn_tasks.append(self._process_attention_batch(inference_handler, attn_requests, save_latents))
                 
             if active_requests:
                 # Process all non-attention requests in another task
-                tasks.append(self._process_active_batch(inference_handler, active_requests, save_latents))
+                # asyncio.create_task(self._process_active_batch(inference_handler, active_requests, save_latents))
+                active_tasks.append(self._process_active_batch(inference_handler, active_requests, save_latents))
             
             # Execute both batches concurrently
-            if tasks:
-                await asyncio.gather(*tasks)
+            # start_time = time.perf_counter()
+            if attn_tasks:
+                await asyncio.gather(*attn_tasks)
+            if active_tasks:
+                await asyncio.gather(*active_tasks)
+            # end_time = time.perf_counter()
+            # elapsed = end_time - start_time
+            # if round(elapsed) > 0:
+            #     logger.info(f"Batch processing took {elapsed:.3f} seconds")
                 # print("Each iteration time: ", time.time() - st)
             
             # while not self.request_pool.decode_queue.empty():
@@ -314,7 +324,6 @@ class RequestHandler:
             compute_attention=False,
             save_latents=save_latents
         )
-        
         # Update all processed requests
         for request in processed_requests:
             request_id = request["request_id"]

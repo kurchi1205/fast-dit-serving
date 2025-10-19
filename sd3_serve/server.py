@@ -172,6 +172,7 @@ async def startup_event():
     """
     Load the model and start the background task to monitor and process requests.
     """
+
     global SHARDS, router, LOOPS_STARTED, ROUTER_STARTED, GLOBAL_OUTPUT_POOL
 
     n = torch.cuda.device_count()
