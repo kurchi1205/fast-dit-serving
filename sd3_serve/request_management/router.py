@@ -52,10 +52,16 @@ class Router:
     async def add_request(self, prompt, timesteps_left):
         """Add a new request to the pool."""
         request = self.create_request(prompt, timesteps_left)
+        # async with self.lock:
+        #     await self.intake.put(request)
+        
         async with self.lock:
-            await self.intake.put(request)
-        logger.info(f"Request added to queue: {request['request_id']} (Prompt: {request['prompt']})")
-
+            try:
+                await self.intake.put(request)
+                logger.info(f"Request added to queue: {request['request_id']} (Prompt: {request['prompt']})")
+                return True
+            except asyncio.QueueFull:
+                return False
 
 
 
@@ -70,7 +76,14 @@ class Router:
         return max(0, shard["handler"].max_requests - (current_final + current_raw))
     
 
-    async def assign_requests_to_shards(self, poll_interval: float = 0.01):
+    def total_capacity_left(self) -> int:
+        # How many requests can we still accept overall?
+        shard_budget = sum(self._assignable_slots(s) for s in self.shards)
+        intake_budget = self.max_queue - self.intake.qsize()
+        # Be conservative: we only count space that can actually be serviced soon.
+        return min(shard_budget + intake_budget, intake_budget)
+
+    async def assign_requests_to_shards(self, poll_interval: float = 5):
         """
         Sequentially assign requests to GPUs based on their real-time assignable slots.
         Fill GPU-0 first until capacity is full, then move to GPU-1, and so on.
@@ -80,17 +93,18 @@ class Router:
 
         while True:
             if self.intake.empty():
-                await asyncio.sleep(poll_interval)
+                await asyncio.sleep(0.01)
                 continue
 
             made_progress = False
             num_pending = self.intake.qsize()
-
-            for _ in range(num_pending):
+            for n in range(num_pending):
                 assigned = False
 
                 # Try to assign from current GPU onward
-                while self.current_gpu_idx < num_gpus:
+                tried = 0
+                while not assigned:
+                    tried += 1
                     gpu_idx = self.current_gpu_idx
                     shard = self.shards[gpu_idx]
 
@@ -101,13 +115,16 @@ class Router:
                         # Assign request to this GPU
                         req = await self.intake.get()
                         shard["handler"].request_pool.add_request_to_pool(req)
-
                         made_progress = True
                         assigned = True
                         break
                     else:
                         # Move to next GPU only when current is full
                         self.current_gpu_idx += 1
+                        if self.current_gpu_idx == num_gpus:
+                            self.current_gpu_idx = 0
+                    if tried == num_gpus:
+                        break
 
                 # If all GPUs are full, reset to start and retry later
                 if not assigned:
