@@ -1,5 +1,5 @@
-LOG_FILE="outputs/gpu_burst_utilizatio_log.json"
-OUTPUT_IMAGE="outputs/gpu_memory_plot.png"
+LOG_FILE="outputs/gpu_load_2_utilization_log.json"
+OUTPUT_IMAGE="outputs/gpu_memory_plot_load_2.png"
 
 # Run the Python plotter
 python3 plot_gpu_util.py \
