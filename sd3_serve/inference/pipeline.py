@@ -96,9 +96,9 @@ class SD3Inferencer:
         t5_out, t5_pooled = self.t5xxl.model.encode_token_weights(tokens["t5xxl"])
         lg_out = torch.cat([l_out, g_out], dim=-1)
         lg_out = torch.nn.functional.pad(lg_out, (0, 4096 - lg_out.shape[-1]))
-        return torch.cat([lg_out, t5_out], dim=-2), torch.cat(
+        return torch.cat([lg_out, t5_out], dim=-2).to(self.device), torch.cat(
             (l_pooled, g_pooled), dim=-1
-        )
+        ).to(self.device)
 
     def max_denoise(self, sigmas):
         max_sigma = float(self.sd3.model.model_sampling.sigma_max)
@@ -106,7 +106,7 @@ class SD3Inferencer:
         return math.isclose(max_sigma, sigma, rel_tol=1e-05) or sigma > max_sigma
 
     def fix_cond(self, cond):
-        cond, pooled = (cond[0].half().to(device=self.device), cond[1].half().to(device=self.device))
+        cond, pooled = (cond[0].half(), cond[1].half())
         return {"c_crossattn": cond, "y": pooled}
 
 

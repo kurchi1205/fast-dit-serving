@@ -6,6 +6,7 @@ import torch
 import gc
 import time
 from datetime import datetime, timedelta
+from itertools import chain
 
 try:
     from scheduler import Scheduler
@@ -51,6 +52,17 @@ class RequestPool:
         self.raw_requests.pop(request["request_id"])
         logger.info(f"Request added to final pool: {request['request_id']} (Prompt: {request['prompt']})")
 
+    async def add_many_to_active_queue(self, request_ids):
+        """Add multiple requests with single lock acquisition"""
+        if not request_ids:
+            return
+        
+        async with self.lock:
+            for request_id in request_ids:
+                self.active_queue.put_nowait(request_id)
+        
+        logger.debug(f"Added {len(request_ids)} requests to active queue")
+
     async def check_pending_timeouts(self, pending_timeout, current_time):
         """Check pending requests and mark those exceeding the timeout as failed."""
         for request_id, request in list(self.raw_requests.items()):
@@ -73,10 +85,15 @@ class RequestPool:
 
 
     async def add_to_output_pool(self, request):
+        # """Add a completed request to the output pool."""
+        # async with self.lock:
+        #     request['completed_timestamp'] = datetime.now().isoformat()
+        #     await self.output_pool.put(request)
+        # logger.info(f"Request added to output pool: {request['request_id']} (Prompt: {request['prompt']})")
+
         """Add a completed request to the output pool."""
-        async with self.lock:
-            request['completed_timestamp'] = datetime.now().isoformat()
-            await self.output_pool.put(request)
+        request['completed_timestamp'] = datetime.now().isoformat()
+        await self.output_pool.put(request)  # No lock needed - Queue is thread-safe
         logger.info(f"Request added to output pool: {request['request_id']} (Prompt: {request['prompt']})")
 
 
@@ -199,7 +216,7 @@ class RequestHandler:
             attn_requests = await self.request_pool.get_all_attn_requests()
             active_requests = await self.request_pool.get_all_active_requests()
             
-            
+
             # Create two parallel tasks - one for attention requests, one for active requests
             attn_tasks = []
             active_tasks = []
@@ -219,33 +236,59 @@ class RequestHandler:
                 await asyncio.gather(*attn_tasks)
             if active_tasks:
                 await asyncio.gather(*active_tasks)
-            # end_time = time.perf_counter()
-            # elapsed = end_time - start_time
-            # if round(elapsed) > 0:
-            #     logger.info(f"Batch processing took {elapsed:.3f} seconds")
-                # print("Each iteration time: ", time.time() - st)
-            
-            # while not self.request_pool.decode_queue.empty():
-            #     request_id = await self.request_pool.decode_queue.get()
-            #     asyncio.create_task(self._decode_request(inference_handler, request_id))
 
-            # Update queue statuses after processing
-            for request_id in attn_requests + active_requests:
-                if request_id in self.request_pool.requests:
-                    if self.request_pool.requests[request_id]["status"] != RequestStatus.COMPLETED:
-                        await self.request_pool.add_to_active_queue(request_id)
-                    else:
-                        asyncio.create_task(self._decode_request(inference_handler, request_id))
-                    # elif self.request_pool.requests[request_id]["status"] == RequestStatus.COMPLETED:
-                    #     logger.debug(f"Request {request_id} completed. Moving to output pool.")
-                    #     await self.request_pool.add_to_output_pool(self.request_pool.requests[request_id])
             
-            # Check for timeouts periodically
-            # if (datetime.now() - last_timeout_check).total_seconds() > self.pending_timeout_check:
-            #     await self.request_pool.check_pending_timeouts(self.pending_timeout_check, datetime.now())
-            #     last_timeout_check = datetime.now()
+            active_ids = []
+            decode_ids = []
+            requests_dict = self.request_pool.requests
+            
+            # Single pass through all processed requests
+            for request_id in chain(attn_requests, active_requests):
+                request = requests_dict.get(request_id)
+                if request is None:
+                    continue
                 
-            await asyncio.sleep(0.001)      
+                if request["status"] != RequestStatus.COMPLETED:
+                    active_ids.append(request_id)
+                else:
+                    decode_ids.append(request_id)
+            
+            # Batch queue operations (single lock acquisition)
+            if active_ids:
+                await self.request_pool.add_many_to_active_queue(active_ids)
+
+            for request_id in decode_ids:
+                asyncio.create_task(self._decode_request(inference_handler, request_id))
+            # # end_time = time.perf_counter()
+            # # elapsed = end_time - start_time
+            # # if round(elapsed) > 0:
+            # #     logger.info(f"Batch processing took {elapsed:.3f} seconds")
+            #     # print("Each iteration time: ", time.time() - st)
+            
+            # # while not self.request_pool.decode_queue.empty():
+            # #     request_id = await self.request_pool.decode_queue.get()
+            # #     asyncio.create_task(self._decode_request(inference_handler, request_id))
+
+            # # Update queue statuses after processing
+            # for request_id in attn_requests + active_requests:
+            #     if request_id in self.request_pool.requests:
+            #         if self.request_pool.requests[request_id]["status"] != RequestStatus.COMPLETED:
+            #             await self.request_pool.add_to_active_queue(request_id)
+            #         else:
+            #             asyncio.create_task(self._decode_request(inference_handler, request_id))
+            #         # elif self.request_pool.requests[request_id]["status"] == RequestStatus.COMPLETED:
+            #         #     logger.debug(f"Request {request_id} completed. Moving to output pool.")
+            #         #     await self.request_pool.add_to_output_pool(self.request_pool.requests[request_id])
+            
+            # # Check for timeouts periodically
+            # # if (datetime.now() - last_timeout_check).total_seconds() > self.pending_timeout_check:
+            # #     await self.request_pool.check_pending_timeouts(self.pending_timeout_check, datetime.now())
+            # #     last_timeout_check = datetime.now()
+                
+            if not active_tasks and not attn_tasks:
+                await asyncio.sleep(0.001)  # Sleep longer when idle
+            else:
+                await asyncio.sleep(0)  # Just yield when busy
 
     
     async def _decode_request(self, inference_handler, request_id):
