@@ -57,7 +57,7 @@ class Scheduler:
 
             # Step 1: Process active queue first
             while not request_pool.active_queue.empty():
-                request_id = await request_pool.active_queue.get()
+                request_id = request_pool.active_queue.get_nowait()
                 request = request_pool.requests[request_id]
 
                 # Prioritize current_timestep == 0
@@ -69,7 +69,7 @@ class Scheduler:
             # Step 2: First push timestep == 0 requests to attn_queue
             for request_id in timestep_zero_requests:
                 if request_pool.attn_queue.qsize() < self.batch_size:
-                    await request_pool.attn_queue.put(request_id)
+                    request_pool.attn_queue.put_nowait(request_id)
                     logger.info(f"Timestep-0 request {request_id} added to attention queue.")
                 else:
                     active_requests.append(request_id)  # Re-add if queue full
@@ -78,10 +78,10 @@ class Scheduler:
             for request_id in active_requests:
                 request = request_pool.requests[request_id]
                 if request["cache_interval"] <= 0 and request_pool.attn_queue.qsize() < self.batch_size:
-                    await request_pool.attn_queue.put(request_id)
+                    request_pool.attn_queue.put_nowait(request_id)
                     logger.info(f"Cache-exhausted request {request_id} added to attention queue.")
                 else:
-                    await request_pool.active_queue.put(request_id)
+                    request_pool.active_queue.put_nowait(request_id)
 
             # Step 2: Add new requests from the pool if attn_queue is not full
             for request_id, request in request_pool.requests.items():
@@ -90,7 +90,7 @@ class Scheduler:
                     break  # Stop if attn_queue is full
                 if request["status"] == RequestStatus.PENDING:
                     if (request_pool.active_queue.qsize() + request_pool.attn_queue.qsize()) < max_active_requests and request_pool.attn_queue.qsize() < self.batch_size:
-                        await request_pool.attn_queue.put(request_id)
+                        request_pool.attn_queue.put_nowait(request_id)
                         request["status"] = RequestStatus.IN_PROGRESS
                         logger.debug(f"New request {request_id} added to attention queue.")
 

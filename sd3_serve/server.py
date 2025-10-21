@@ -140,7 +140,8 @@ async def get_output():
                     "timestamp": request["timestamp"],
                     "processing_time_start": request.get("processing_time_start", 0),
                     "time_completed": time_completed, 
-                    "image": image_path
+                    "image": image_path,
+                    "gpu_id": request["device"]
                 }
             )
             logger.info(f"Retrieved completed request: {request}")

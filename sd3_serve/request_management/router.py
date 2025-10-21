@@ -114,6 +114,7 @@ class Router:
                     if slots > 0:
                         # Assign request to this GPU
                         req = await self.intake.get()
+                        req["device"] = shard["device"]
                         shard["handler"].request_pool.add_request_to_pool(req)
                         made_progress = True
                         assigned = True

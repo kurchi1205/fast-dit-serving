@@ -79,8 +79,8 @@ class RequestPool:
 
     async def add_to_active_queue(self, request_id):
         """Add a request to the active queue."""
-        async with self.lock:
-            await self.active_queue.put(request_id)
+        # async with self.lock:
+        self.active_queue.put_nowait(request_id)
         logger.debug(f"Request added to active queue: {request_id}")
 
 
@@ -100,18 +100,18 @@ class RequestPool:
     async def get_all_active_requests(self):
         """Fetch all non-attention active requests."""
         requests = []
-        async with self.lock:
-            while not self.active_queue.empty():
-                requests.append(await self.active_queue.get())
+        # async with self.lock:
+        while not self.active_queue.empty():
+            requests.append(self.active_queue.get_nowait())
         logger.debug(f"Fetched {len(requests)} active requests.")
         return requests
 
     async def get_all_attn_requests(self):
         """Fetch all attention requests."""
         requests = []
-        async with self.lock:
-            while not self.attn_queue.empty():
-                requests.append(await self.attn_queue.get())
+        # async with self.lock:
+        while not self.attn_queue.empty():
+            requests.append(self.attn_queue.get_nowait())
         logger.debug(f"Fetched {len(requests)} attention requests.")
         return requests
 
@@ -309,8 +309,6 @@ class RequestHandler:
         for key in ["noise_scaled", "sigmas", "conditioning", "neg_cond", "old_denoised", "context_latent", "x_latent"]:
             if key in request:
                 del request[key]
-        gc.collect()
-        torch.cuda.empty_cache()
         # Move request to output pool
         await self.request_pool.add_to_output_pool(request)
 
