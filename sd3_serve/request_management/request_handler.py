@@ -311,6 +311,8 @@ class RequestHandler:
                 del request[key]
         # Move request to output pool
         await self.request_pool.add_to_output_pool(request)
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 
