@@ -119,7 +119,7 @@ class CachingClient:
         await self.add_request(prompt, timesteps_left)
 
         logger.info("Polling for output...")
-        path = f"/home/fast-dit-serving/assets/partiprompts_sd3_custom_default_sched/{key}_cache_{interval}.png"
+        path = f"/home/fast-dit-serving/assets/drawbench_sd3_custom/{key}_cache_{interval}.png"
         await self.poll_for_outputs(path)
 
 
@@ -128,23 +128,14 @@ class CachingClient:
         await self.start_background_process()
 
 
-async def process_prompts(client, prompts_dict, challenges_dict, interval):
-    # Group prompts by challenge
-    challenge_prompts = defaultdict(list)
+async def process_prompts(client, prompts_dict, interval):
     for key, prompt in prompts_dict.items():
-        challenge = challenges_dict.get(f"{key}_challenge")
-        if challenge:
-            challenge_prompts[challenge].append((key, prompt))
-
-    # Take first 20 per challenge
-    filtered_prompts = {}
-    for entries in challenge_prompts.values():
-        for key, prompt in entries[:20]:
-            filtered_prompts[key] = prompt
-
-    for key, prompt in filtered_prompts.items():
         print(f"Processing {key} (cache_{interval})")
         try:
+            path = f"/home/fast-dit-serving/assets/drawbench_sd3_custom/{key}_cache_{interval}.png"
+            if os.path.exists(path):
+                print("continuing")
+                continue
             await client.run(interval, prompt, timesteps_left=50, key=key)
         except Exception as e:
             logger.error(f"Error processing {key}: {e}")
@@ -153,8 +144,7 @@ async def process_prompts(client, prompts_dict, challenges_dict, interval):
 def parse_args():
     parser = argparse.ArgumentParser(description="Process prompts with caching intervals")
     parser.add_argument("--interval_list", type=int, nargs="+", default=[5], help="List of caching intervals")
-    parser.add_argument("--prompt_path", type=str, default="parti_prompts.json", help="Path to prompts JSON file")
-    parser.add_argument("--challenge_path", type=str, default="parti_challenges.json", help="Path to challenges JSON file")
+    parser.add_argument("--prompt_path", type=str, default="drawbench_prompts.json", help="Path to prompts JSON file")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -162,10 +152,8 @@ if __name__ == "__main__":
     client = CachingClient()
     interval_list = args.interval_list
     prompt_path = args.prompt_path
-    challenge_path = args.challenge_path
 
     prompts = json.load(open(prompt_path))
-    challenges = json.load(open(challenge_path))
 
     for interval in interval_list:
-        asyncio.run(process_prompts(client, prompts, challenges, interval))
+        asyncio.run(process_prompts(client, prompts, interval))
