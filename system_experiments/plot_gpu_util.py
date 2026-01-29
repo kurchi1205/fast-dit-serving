@@ -41,15 +41,15 @@ def plot_gpu_memory(log_file, save_path=None):
     for gpu_id, data in gpu_data.items():
         start_time = data["t"][0]
         data["elapsed_sec"] = [(t - start_time).total_seconds() for t in data["t"]]
-        # filtered_indices = [
-        #     i for i, t in enumerate(data["elapsed_sec"]) if 0 <= t <= 1000
-        # ]
-        # data["elapsed_sec"] = [data["elapsed_sec"][i] for i in filtered_indices]
-        # data["mem"] = [data["mem"][i] for i in filtered_indices]
+        filtered_indices = [
+            i for i, t in enumerate(data["elapsed_sec"]) if 750 <= t <= 1120
+        ]
+        data["elapsed_sec"] = [data["elapsed_sec"][i] for i in filtered_indices]
+        data["mem"] = [data["mem"][i] for i in filtered_indices]
 
 
     # --- Plot ---
-    plt.figure(figsize=(18, 6))
+    plt.figure(figsize=(12, 4))
     colors = plt.cm.tab10.colors
 
     for i, (gpu_id, data) in enumerate(gpu_data.items()):

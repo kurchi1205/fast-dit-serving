@@ -1,5 +1,5 @@
 PROMPT_FILE="/home/fast-dit-serving/partiprompts_generation/parti_prompts.json"
-COMPLETED_LOG="/home/fast-dit-serving/system_experiments/outputs/completed_requests_burst.json"
+COMPLETED_LOG="/home/fast-dit-serving/system_experiments/outputs/completed_requests_burst_a6000.json"
 HOST="http://localhost:8000"
 
 SAVE_INTERVAL=5        # Save completed requests every N results

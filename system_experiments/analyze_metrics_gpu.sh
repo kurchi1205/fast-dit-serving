@@ -1,6 +1,6 @@
 
 LOG_DIR="outputs"
-LOG_FILE="$LOG_DIR/gpu_test_utilization_log.json"
+LOG_FILE="$LOG_DIR/gpu_burst_utilization_log_3_gpus_cache_0.json"
 DUMP_INTERVAL=5     # seconds between dumps
 SAMPLE_INTERVAL=1   # seconds between samples
 

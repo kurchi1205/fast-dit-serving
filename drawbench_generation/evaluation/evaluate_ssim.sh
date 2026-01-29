@@ -1,8 +1,8 @@
 
 # Set paths
-SRC_DIR="/home/fast-dit-serving/assets/partiprompts_sd3_og"
-TGT_DIR="/home/fast-dit-serving/assets/partiprompts_sd3_custom_default_sched"
-OUTPUT_JSON="/home/fast-dit-serving/partiprompts_generation/outputs/ssim_scores_by_prompt_default_sched.json"
+SRC_DIR="/home/fast-dit-serving/assets/drawbench_sd3"
+TGT_DIR="/home/fast-dit-serving/assets/drawbench_sd3_custom"
+OUTPUT_JSON="/home/fast-dit-serving/drawbench_generation/outputs/ssim_scores_by_prompt_drawbench_sd3_custom.json"
 INTERVALS="5"
 
 # Run SSIM evaluation
@@ -12,4 +12,4 @@ python compute_ssim_scores.py \
     --output "$OUTPUT_JSON" \
     --intervals $INTERVALS
 
-python stats_summary_ssim.py --json_path "/home/fast-dit-serving/partiprompts_generation/outputs/ssim_scores_by_prompt_default_sched.json"
+python stats_summary_ssim.py --json_path "/home/fast-dit-serving/drawbench_generation/outputs/ssim_scores_by_prompt_drawbench_sd3_custom.json"

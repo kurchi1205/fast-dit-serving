@@ -32,7 +32,7 @@ def compute_clip_scores(image_dir, prompts_path, output_path, cache_interval=Non
 
     if cache_interval is None:
         # Calculate CLIP scores for all images in the folder
-        for img_path in sorted(image_dir.glob("*.jpeg")):
+        for img_path in sorted(image_dir.glob("*.png")):
             filename = img_path.stem  # e.g., 'p2_prompt_0_cache_2'
             
             # Extract the key by removing '_cache*' from filename
@@ -60,7 +60,7 @@ def compute_clip_scores(image_dir, prompts_path, output_path, cache_interval=Non
                 clip_scores[filename] = None
     else:
         # Calculate CLIP scores for images with specific cache interval
-        for img_path in sorted(image_dir.glob(f"*_cache_{cache_interval}.jpeg")):
+        for img_path in sorted(image_dir.glob(f"*_cache_{cache_interval}.png")):
             filename = img_path.stem  # e.g., 'p2_prompt_0_cache_2'
             
             # Extract the key by removing '_cache*' from filename

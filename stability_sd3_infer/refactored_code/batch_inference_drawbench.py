@@ -10,7 +10,6 @@ from pipeline import SD3Inferencer
 
 def batch_inference(
     prompt_json_path,
-    challenge_json_path,
     model_path="/home/fast-dit-serving/sd3_model/sd3_medium.safetensors",
     model_folder="/home/fast-dit-serving/sd3_model/",
     output_dir="outputs",
@@ -31,24 +30,24 @@ def batch_inference(
     with open(prompt_json_path, "r") as f:
         prompts_dict = json.load(f)
 
-    with open(challenge_json_path, "r") as f:
-        challenge_dict = json.load(f)
+    # with open(challenge_json_path, "r") as f:
+    #     challenge_dict = json.load(f)
 
-    # Group prompts by challenge type
-    challenge_groups = defaultdict(list)
-    for key, prompt in prompts_dict.items():
-        challenge_key = f"{key}_challenge"
-        challenge = challenge_dict.get(challenge_key)
-        if challenge:
-            challenge_groups[challenge].append((key, prompt))
+    # # Group prompts by challenge type
+    # challenge_groups = defaultdict(list)
+    # for key, prompt in prompts_dict.items():
+    #     challenge_key = f"{key}_challenge"
+    #     challenge = challenge_dict.get(challenge_key)
+    #     if challenge:
+    #         challenge_groups[challenge].append((key, prompt))
 
-    # Keep only first 20 prompts per challenge
-    filtered_prompts = {}
-    for challenge, entries in challenge_groups.items():
-        for key, prompt in entries[:20]:
-            filtered_prompts[key] = prompt
+    # # Keep only first 20 prompts per challenge
+    # filtered_prompts = {}
+    # for challenge, entries in challenge_groups.items():
+    #     for key, prompt in entries[:20]:
+    #         filtered_prompts[key] = prompt
 
-    print(f"🧠 Total prompts selected: {len(filtered_prompts)}")
+    # print(f"🧠 Total prompts selected: {len(filtered_prompts)}")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -62,7 +61,7 @@ def batch_inference(
         shift=5
     )
 
-    for key, prompt in tqdm(filtered_prompts.items()):
+    for key, prompt in tqdm(prompts_dict.items()):
         # if i == 10:
         #     break
         images = inferencer.gen_image(
